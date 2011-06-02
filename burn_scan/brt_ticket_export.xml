@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE Server  SYSTEM 'opt/pdos/etc/pdoslrd.dtd'><occurrence>
+	<label>Critical Massive, CMMMXI - Summer Camp</label>
+	<tiers>
+	
+		<tier code="6">
+		<label>$65 (Tier 1)</label>
+			<tickets>
+				
+			</tickets>
+		</tier>
+	
+		<tier code="7">
+		<label>$75 (Tier 2)</label>
+			<tickets>
+				
+			</tickets>
+		</tier>
+	
+		<tier code="8">
+		<label>$85 (Tier 3)</label>
+			<tickets>
+			</tickets>
+		</tier>
+	
+		<tier code="9">
+		<label>Staff-Comp</label>
+			<tickets>
+				
+			</tickets>
+		</tier>
+	
+		<tier code="3">
+		<label>Artist-Discount</label>
+			<tickets>
+				
+			</tickets>
+		</tier>
+	
+		<tier code="2">
+		<label>Low-Income</label>
+			<tickets>
+				
+			</tickets>
+		</tier>
+	
+		<tier code="1">
+		<label>No-Income</label>
+			<tickets>
+				
+				
+				<ticket number="2">
+					<code>3805</code>
+					<user_email>tony@chaoslabs.org</user_email>
+					<assigned_name>None</assigned_name>
+					<purchase_date>Feb. 28, 2011, 9:20 a.m.</purchase_date>
+				</ticket>
+				
+				
+				
+				<ticket entered="2011-02-28 10:46:40" number="1">
+					<code>8539</code>
+					<user_email>tony@chaoslabs.org</user_email>
+					<assigned_name>None</assigned_name>
+					<purchase_date>Feb. 27, 2011, 4:33 a.m.</purchase_date>
+				</ticket>
+				
+				
+			</tickets>
+		</tier>
+	
+		<tier code="4">
+		<label>Ranger-Medical</label>
+			<tickets>
+				
+			</tickets>
+		</tier>
+	
+	</tiers>
+</occurrence>
