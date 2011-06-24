@@ -124,11 +124,6 @@ class ticketmainwindow(wx.Frame):
         self.ExitEventButton.SetValue(self.CurrentMode == MODE_EXIT)
         self.BarcodeEntry.SetValue('')
 
-    def RejectionPopup(self):
-        dlg = wx.MessageDialog(self, 'That barcode was not valid for entry.', 'Entry Denied', style = wx.OK | wx.ICON_INFORMATION)
-        dlg.ShowModal()
-        dlg.Destroy()
-
     def OnBarcodeChar(self, event):
         keycode = event.GetKeyCode()
         if keycode == ord('e'):
@@ -171,7 +166,6 @@ class ticketmainwindow(wx.Frame):
             else:
                 self.ActionResults.SetBackgroundColour(BAD_TICKET_COLOR)
                 wx.Sound.PlaySound(REJECT_SOUND)
-                self.RejectionPopup()
             return
         
         message = '''
@@ -190,7 +184,6 @@ Purchase date: %s
                 self.LogTicket(barcode, "reject", "Attempted entry; ticket already used")
                 self.ActionResults.SetBackgroundColour(BAD_TICKET_COLOR)
                 wx.Sound.PlaySound(REJECT_SOUND)
-                self.RejectionPopup()
             else:
                 message = "Ticket valid for entry.\n" + message
                 self.cursor.execute('update ticket set entry_at = datetime() where barcode = ?', (barcode,))
