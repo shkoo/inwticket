@@ -34,7 +34,8 @@ create table ticket (
    user_email varchar(100),
    assigned_name varchar(100),
    purchase_date datetime,
-   entry_at datetime,
+   used_at datetime,
+   is_present int(1) not null,   
    primary key(barcode)
 )
 ''')
@@ -72,8 +73,8 @@ for tier in tiers:
             barcode = "%s%05i%s" % (tier_id, int(number), attribs["code"])
             
             cursor.execute('''
-insert into ticket (barcode, tier_id, code, number, user_email, assigned_name, purchase_date, entry_at)
-values (?, ?, ?, ?, ?, ?, ?, null)''',
+insert into ticket (barcode, tier_id, code, number, user_email, assigned_name, purchase_date, used_at, is_present)
+values (?, ?, ?, ?, ?, ?, ?, null, 0)''',
                            (barcode, tier_id, attribs["code"], number, attribs["user_email"], attribs["assigned_name"], fromxmldate(attribs["purchase_date"])))
 
 sqlconn.commit()
