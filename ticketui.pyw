@@ -11,7 +11,8 @@ import re
 
 DATABASE_FILE = "ticketdb"
 XML_LOG_FILE = "ticket-transactions-%s.xml" % datetime.now().strftime("%Y-%m-%d")
-EXIT_PASSWORD = "password"
+# EXIT_PASSWORD = "password"
+EXIT_PASSWORD = None
 
 ACCEPT_SOUND = "burn_scan/accept.wav"
 REJECT_SOUND = "burn_scan/reject.wav"
@@ -159,20 +160,26 @@ class ticketmainwindow(wx.Frame):
             self.ShowBarcode(barcode, mode = MODE_INFO)
 
     def SetModeExit(self, event=None):
-        dlg = wx.TextEntryDialog(self, 'Enter password for access to scan-out','Password', style = wx.TE_PASSWORD | wx.OK | wx.CANCEL | wx.CENTRE)
-        dlg.SetValue("")
-        if dlg.ShowModal() == wx.ID_OK:
-            if dlg.GetValue() == EXIT_PASSWORD:
-                self.CurrentMode = MODE_EXIT
-                self.UpdateModeButtons()
-                self.ActionResults.SetBackgroundColour(EXIT_COLOR)
-                self.ActionResults.SetValue("Scan barcode to check user out of event")
-            else:
-                dlg.Destroy()
-                dlg = wx.MessageDialog(self, 'The password you entered was invalid.', 'Bad password', style = wx.OK | wx.ICON_INFORMATION)
-                dlg.ShowModal()
+    	if EXIT_PASSWORD:
+            dlg = wx.TextEntryDialog(self, 'Enter password for access to scan-out','Password', style = wx.TE_PASSWORD | wx.OK | wx.CANCEL | wx.CENTRE)
+            dlg.SetValue("")
+            if dlg.ShowModal() == wx.ID_OK:
+                if dlg.GetValue() == EXIT_PASSWORD:
+                    self.CurrentMode = MODE_EXIT
+                    self.UpdateModeButtons()
+                    self.ActionResults.SetBackgroundColour(EXIT_COLOR)
+                    self.ActionResults.SetValue("Scan barcode to check user out of event")
+                else:
+                    dlg.Destroy()
+                    dlg = wx.MessageDialog(self, 'The password you entered was invalid.', 'Bad password', style = wx.OK | wx.ICON_INFORMATION)
+                    dlg.ShowModal()
 
-        dlg.Destroy()
+            dlg.Destroy()
+        else:
+            self.CurrentMode = MODE_EXIT
+            self.UpdateModeButtons()
+            self.ActionResults.SetBackgroundColour(EXIT_COLOR)
+            self.ActionResults.SetValue("Scan barcode to check user out of event")
 
     def UpdateModeButtons(self):
         self.ActionBoxSizer.Show(self.InfoPanel, False)
