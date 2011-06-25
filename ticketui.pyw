@@ -305,7 +305,7 @@ History:
         self.sqlconn.commit()
         
         f = open(XML_LOG_FILE, 'a')
-        f.write("<" + transtype + " greeter=" + quoteattr(self.CurrentGreeter) + " barcode=" + quoteattr(barcode) + " timestamp=" + quoteattr(datetime.now().strftime("%Y-%m-%d %H:%M:%S")) + ">\n  " + message + "\n<" + transtype + ">\n")
+        f.write("<" + transtype + " greeter=" + quoteattr(self.CurrentGreeter) + " barcode=" + quoteattr(barcode) + " timestamp=" + quoteattr(datetime.now().strftime("%Y-%m-%d %H:%M:%S")) + ">\n  " + message + "\n</" + transtype + ">\n")
         f.close()
 
     def __init__(self,parent,id,title,**kwds):
