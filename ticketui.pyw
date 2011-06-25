@@ -22,6 +22,9 @@ MODE_ENTER = 1
 MODE_INFO = 2
 MODE_EXIT = 3
 
+INFO_MODE_TIER = 1
+INFO_MODE_DATE = 2
+
 OK_TICKET_COLOR = (128, 255, 128)
 BAD_TICKET_COLOR = (255, 96, 96)
 INFO_COLOR = (255, 255, 255)
@@ -35,6 +38,20 @@ class ticketmainwindow(wx.Frame):
             self.CurrentGreeter = dlg.GetValue()
             self.SetModeEnter()
         dlg.Destroy()
+
+    def SetInfoModeTier(self, event=None):
+        self.CurrentInfoMode = INFO_MODE_TIER
+        self.UpdateInfoModeButtons()
+        self.UpdateInfoTree()
+
+    def SetInfoModeDate(self, event=None):
+        self.CurrentInfoMode = INFO_MODE_DATE
+        self.UpdateInfoModeButtons()
+        self.UpdateInfoTree()
+
+    def UpdateInfoModeButtons(self):
+        self.InfoModeTierButton.SetValue(self.CurrentInfoMode == INFO_MODE_TIER)
+        self.InfoModeDateButton.SetValue(self.CurrentInfoMode == INFO_MODE_DATE)
 
     def SetModeEnter(self, event=None):
         self.CurrentMode = MODE_ENTER
@@ -51,11 +68,20 @@ class ticketmainwindow(wx.Frame):
         self.ActionResults.SetBackgroundColour(INFO_COLOR)
         self.ActionResults.SetValue("")
 
-        self.ActionBoxSizer.Show(self.InfoTree, True)
+        self.ActionBoxSizer.Show(self.InfoPanel, True)
         self.ActionBoxSizer.Layout()
 
-        self.InfoTree.DeleteChildren(self.InfoTreeRoot)
+        self.UpdateInfoModeButtons()
+        self.UpdateInfoTree()
 
+    def UpdateInfoTree(self):
+        self.InfoTree.DeleteChildren(self.InfoTreeRoot)
+        if self.CurrentInfoMode == INFO_MODE_TIER:
+            self.UpdateInfoTreeTier()
+        if self.CurrentInfoMode == INFO_MODE_DATE:
+            self.UpdateInfoTreeDate()
+
+    def UpdateInfoTreeTier(self):
         cursor2 = self.sqlconn.cursor()
         self.cursor.execute('select tier_id, label from tier order by tier_id')
         for tier in self.cursor:
@@ -74,24 +100,49 @@ class ticketmainwindow(wx.Frame):
             self.InfoTree.SetItemPyData(newitem, ("tier", tier['tier_id']))
             if tier_total > 0:
                 self.InfoTree.SetItemHasChildren(newitem, True)
+    
+    def UpdateInfoTreeDate(self):
+        cursor2 = self.sqlconn.cursor()
+        self.cursor.execute('select date(entry_at) as day from ticket group by day order by day desc')
+        for date in self.cursor:
+            cursor2.execute('select count(*) as tot, count(entry_at) as entered from ticket where date(entry_at) = ?', (date['day'],))
+            (day_entered, day_total) = (0, 0)
+            for entered in cursor2:
+                day_entered = entered['entered']
+                day_total = entered['tot']
+            label = "%s: %d/%d checked in" % (date['day'], day_entered, day_total)
+            newitem = self.InfoTree.AppendItem(self.InfoTreeRoot, label)
+            self.InfoTree.SetItemPyData(newitem, ("day", date['day']))
+            if day_total > 0:
+                self.InfoTree.SetItemHasChildren(newitem, True)
+
 
     def InfoTreeExpanding(self, event):
-        tier_item = event.GetItem()
-        if tier_item == self.InfoTreeRoot:
+        parent_item = event.GetItem()
+        if parent_item == self.InfoTreeRoot:
             event.Skip()
             return
-        self.InfoTree.DeleteChildren(tier_item)
-        (data_type, data_value) = self.InfoTree.GetItemPyData(tier_item)
-        if data_type != 'tier': return
-        self.cursor.execute('select barcode, number, assigned_name, entry_at from ticket where tier_id = ? order by entry_at desc, assigned_name, number', (data_value,))
-        for row in self.cursor:
-            message = '%s: %s (#%d)' % (row['barcode'], row['assigned_name'], row['number'])
-            if row['entry_at']:
-                message += ' entered at: ' + row['entry_at']
-            newitem = self.InfoTree.AppendItem(tier_item, message)
-            self.InfoTree.SetItemPyData(newitem, ("barcode", row['barcode']))
-        event.Skip()
-
+        self.InfoTree.DeleteChildren(parent_item)
+        (data_type, data_value) = self.InfoTree.GetItemPyData(parent_item)
+        if data_type == 'tier':
+            self.cursor.execute('select barcode, number, assigned_name, entry_at from ticket where tier_id = ? order by entry_at desc, assigned_name, number', (data_value,))
+            for row in self.cursor:
+                message = '%s: %s (#%d)' % (row['barcode'], row['assigned_name'], row['number'])
+                if row['entry_at']:
+                    message += ' entered at: ' + row['entry_at']
+                newitem = self.InfoTree.AppendItem(parent_item, message)
+                self.InfoTree.SetItemPyData(newitem, ("barcode", row['barcode']))
+            event.Skip()
+        if data_type == 'day':
+            self.cursor.execute('select barcode, number, assigned_name, entry_at from ticket where date(entry_at) = ? order by entry_at desc, assigned_name, number', (data_value,))
+            for row in self.cursor:
+                message = '%s: %s (#%d)' % (row['barcode'], row['assigned_name'], row['number'])
+                if row['entry_at']:
+                    message += ' entered at: ' + row['entry_at']
+                newitem = self.InfoTree.AppendItem(parent_item, message)
+                self.InfoTree.SetItemPyData(newitem, ("barcode", row['barcode']))
+            
+            event.Skip()
 
     def InfoTreeActivated(self, event):
         selected_item = event.GetItem()
@@ -116,7 +167,7 @@ class ticketmainwindow(wx.Frame):
         dlg.Destroy()
 
     def UpdateModeButtons(self):
-        self.ActionBoxSizer.Show(self.InfoTree, False)
+        self.ActionBoxSizer.Show(self.InfoPanel, False)
         self.ActionBoxSizer.Layout()
 
         self.EnterEventButton.SetValue(self.CurrentMode == MODE_ENTER)
@@ -255,6 +306,7 @@ History:
         self.__do_layout()
         self.__open_database()
         self.SetModeEnter()
+        self.CurrentInfoMode = INFO_MODE_DATE
 
         # update our current time and counts every second:
         self.timer = wx.Timer(self)
@@ -291,8 +343,19 @@ History:
         self.ChangeGreeterButton.Bind(wx.EVT_BUTTON, self.ChangeGreeter)
         
         self.ActionBoxSizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.ActionBoxSizer.Add(self.InfoTree, proportion=1, flag = wx.EXPAND)
-        self.ActionBoxSizer.Add(self.ActionResults, proportion=1, flag = wx.EXPAND)
+
+	self.InfoPanel = wx.BoxSizer(wx.VERTICAL)
+        infomodebuttons = wx.BoxSizer(wx.HORIZONTAL)
+        self.InfoModeTierButton = wx.ToggleButton(self, -1, "By Tier")
+        self.InfoModeDateButton = wx.ToggleButton(self, -1, "By Date")
+        infomodebuttons.Add(self.InfoModeTierButton, proportion = 1, flag = wx.EXPAND | wx.LEFT | wx.RIGHT, border = 5)
+        infomodebuttons.Add(self.InfoModeDateButton, proportion = 1, flag = wx.EXPAND | wx.LEFT | wx.RIGHT, border = 5)
+        self.InfoModeTierButton.Bind(wx.EVT_TOGGLEBUTTON, self.SetInfoModeTier)
+        self.InfoModeDateButton.Bind(wx.EVT_TOGGLEBUTTON, self.SetInfoModeDate)
+        self.InfoPanel.Add(infomodebuttons, proportion=0, flag = wx.EXPAND | wx.LEFT | wx.RIGHT)
+        self.InfoPanel.Add(self.InfoTree, proportion=1, flag = wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT | wx.BOTTOM)
+        self.ActionBoxSizer.Add(self.InfoPanel, proportion=1, flag = wx.EXPAND | wx.LEFT | wx.RIGHT)
+        self.ActionBoxSizer.Add(self.ActionResults, proportion=1, flag = wx.EXPAND | wx.LEFT | wx.RIGHT)
 
         doc = wx.TextCtrl(self, -1, DOCTEXT, style = wx.TE_READONLY | wx.TE_MULTILINE)
         doc.SetFont(self.ReadableFont)
