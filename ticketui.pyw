@@ -11,7 +11,8 @@ import re
 
 DATABASE_FILE = "ticketdb"
 XML_LOG_FILE = "ticket-transactions-%s.xml" % datetime.now().strftime("%Y-%m-%d")
-EXIT_PASSWORD = "password"
+# EXIT_PASSWORD = "password"
+EXIT_PASSWORD = None
 
 ACCEPT_SOUND = "burn_scan/accept.wav"
 REJECT_SOUND = "burn_scan/reject.wav"
@@ -21,6 +22,9 @@ DOCTEXT="Use (b) to scan barcodes for entry. When you have a new greeter shift c
 MODE_ENTER = 1
 MODE_INFO = 2
 MODE_EXIT = 3
+
+INFO_MODE_TIER = 1
+INFO_MODE_DATE = 2
 
 OK_TICKET_COLOR = (128, 255, 128)
 BAD_TICKET_COLOR = (255, 96, 96)
@@ -35,6 +39,20 @@ class ticketmainwindow(wx.Frame):
             self.CurrentGreeter = dlg.GetValue()
             self.SetModeEnter()
         dlg.Destroy()
+
+    def SetInfoModeTier(self, event=None):
+        self.CurrentInfoMode = INFO_MODE_TIER
+        self.UpdateInfoModeButtons()
+        self.UpdateInfoTree()
+
+    def SetInfoModeDate(self, event=None):
+        self.CurrentInfoMode = INFO_MODE_DATE
+        self.UpdateInfoModeButtons()
+        self.UpdateInfoTree()
+
+    def UpdateInfoModeButtons(self):
+        self.InfoModeTierButton.SetValue(self.CurrentInfoMode == INFO_MODE_TIER)
+        self.InfoModeDateButton.SetValue(self.CurrentInfoMode == INFO_MODE_DATE)
 
     def SetModeEnter(self, event=None):
         self.CurrentMode = MODE_ENTER
@@ -51,47 +69,89 @@ class ticketmainwindow(wx.Frame):
         self.ActionResults.SetBackgroundColour(INFO_COLOR)
         self.ActionResults.SetValue("")
 
-        self.ActionBoxSizer.Show(self.InfoTree, True)
+        self.ActionBoxSizer.Show(self.InfoPanel, True)
         self.ActionBoxSizer.Layout()
 
-        self.InfoTree.DeleteChildren(self.InfoTreeRoot)
+        self.UpdateInfoModeButtons()
+        self.UpdateInfoTree()
 
+    def UpdateInfoTree(self):
+        self.InfoTree.DeleteChildren(self.InfoTreeRoot)
+        if self.CurrentInfoMode == INFO_MODE_TIER:
+            self.UpdateInfoTreeTier()
+        if self.CurrentInfoMode == INFO_MODE_DATE:
+            self.UpdateInfoTreeDate()
+
+    def UpdateInfoTreeTier(self):
         cursor2 = self.sqlconn.cursor()
         self.cursor.execute('select tier_id, label from tier order by tier_id')
         for tier in self.cursor:
-            cursor2.execute('select count(*) as tot, count(entry_at) as entered from ticket where tier_id = ?', (tier['tier_id'],))
-            (tier_entered, tier_total, tier_entered_today) = (0, 0, 0)
-            for entered in cursor2:
-                tier_entered = entered['entered']
-                tier_total = entered['tot']
-            cursor2.execute('select count(*) as today from ticket where tier_id = ? and entry_at > date()', (tier['tier_id'],))
-            for entered in cursor2:
-                tier_entered_today = entered['today']
-            label = "%s: %d/%d checked in" % (tier['label'], tier_entered, tier_total)
-            if tier_entered_today > 0:
-                label += " (%d today)" % tier_entered_today
+            cursor2.execute('select count(*) as tot, count(used_at) as used, sum(is_present) as present from ticket where tier_id = ?', (tier['tier_id'],))
+            (tier_used, tier_total, tier_present, tier_used_today) = (0, 0, 0, 0)
+            for tierdata in cursor2:
+                tier_total = tierdata['tot']
+                tier_used = tierdata['used']
+                if tierdata['present']:
+                    tier_present = tierdata['present']
+            cursor2.execute('select count(*) as today from ticket where tier_id = ? and used_at > date()', (tier['tier_id'],))
+            for used_today in cursor2:
+                if used_today['today']:
+                    tier_used_today = used_today['today']
+            label = "%s: %d/%d checked in (%d present" % (tier['label'], tier_used, tier_total, tier_present)
+            if tier_used_today > 0:
+                label += ", %d checked in today" % tier_used_today
+            label += ")"
             newitem = self.InfoTree.AppendItem(self.InfoTreeRoot, label)
             self.InfoTree.SetItemPyData(newitem, ("tier", tier['tier_id']))
             if tier_total > 0:
                 self.InfoTree.SetItemHasChildren(newitem, True)
+    
+    def UpdateInfoTreeDate(self):
+        cursor2 = self.sqlconn.cursor()
+        self.cursor.execute('select date(used_at) as day from ticket group by day order by day desc')
+        for date in self.cursor:
+            cursor2.execute('select count(*) as total, sum(is_present) as present from ticket where date(used_at) = ?', (date['day'],))
+            (day_used, day_total, day_present) = (0, 0, 0)
+            for daydata in cursor2:
+                day_total = daydata['total']
+                if daydata['present']:
+                    day_present = daydata['present']
+            label = "%s: %d checked in (%d still present)" % (date['day'], day_total, day_present)
+            newitem = self.InfoTree.AppendItem(self.InfoTreeRoot, label)
+            self.InfoTree.SetItemPyData(newitem, ("day", date['day']))
+            if day_total > 0:
+                self.InfoTree.SetItemHasChildren(newitem, True)
+
 
     def InfoTreeExpanding(self, event):
-        tier_item = event.GetItem()
-        if tier_item == self.InfoTreeRoot:
+        parent_item = event.GetItem()
+        if parent_item == self.InfoTreeRoot:
             event.Skip()
             return
-        self.InfoTree.DeleteChildren(tier_item)
-        (data_type, data_value) = self.InfoTree.GetItemPyData(tier_item)
-        if data_type != 'tier': return
-        self.cursor.execute('select barcode, number, assigned_name, entry_at from ticket where tier_id = ? order by entry_at desc, assigned_name, number', (data_value,))
-        for row in self.cursor:
-            message = '%s: %s (#%d)' % (row['barcode'], row['assigned_name'], row['number'])
-            if row['entry_at']:
-                message += ' entered at: ' + row['entry_at']
-            newitem = self.InfoTree.AppendItem(tier_item, message)
-            self.InfoTree.SetItemPyData(newitem, ("barcode", row['barcode']))
-        event.Skip()
-
+        self.InfoTree.DeleteChildren(parent_item)
+        (data_type, data_value) = self.InfoTree.GetItemPyData(parent_item)
+        if data_type == 'tier':
+            self.cursor.execute('select barcode, number, assigned_name, used_at, is_present from ticket where tier_id = ? order by used_at desc, assigned_name, number', (data_value,))
+            for row in self.cursor:
+                message = '%s: %s (#%d)' % (row['barcode'], row['assigned_name'], row['number'])
+                if row['used_at']:
+                    message += ' used at: ' + row['used_at']
+                if row['is_present'] == 0:
+                    message += ' (exited)'
+                newitem = self.InfoTree.AppendItem(parent_item, message)
+                self.InfoTree.SetItemPyData(newitem, ("barcode", row['barcode']))
+            event.Skip()
+        if data_type == 'day':
+            self.cursor.execute('select is_present, label, barcode, number, assigned_name, used_at from ticket, tier where ticket.tier_id = tier.tier_id and  date(used_at) = ? order by used_at desc, assigned_name, number', (data_value,))
+            for row in self.cursor:
+                message = '%s: %s: %s (#%d, %s' % (row['used_at'], row['barcode'], row['assigned_name'], row['number'], row['label'])
+                if row['is_present'] == 0:
+                    message += ', exited'
+                message += ")"
+                newitem = self.InfoTree.AppendItem(parent_item, message)
+                self.InfoTree.SetItemPyData(newitem, ("barcode", row['barcode']))
+            
+            event.Skip()
 
     def InfoTreeActivated(self, event):
         selected_item = event.GetItem()
@@ -100,34 +160,35 @@ class ticketmainwindow(wx.Frame):
             self.ShowBarcode(barcode, mode = MODE_INFO)
 
     def SetModeExit(self, event=None):
-        dlg = wx.TextEntryDialog(self, 'Enter password for access to scan-out','Password', style = wx.TE_PASSWORD | wx.OK | wx.CANCEL | wx.CENTRE)
-        dlg.SetValue("")
-        if dlg.ShowModal() == wx.ID_OK:
-            if dlg.GetValue() == EXIT_PASSWORD:
-                self.CurrentMode = MODE_EXIT
-                self.UpdateModeButtons()
-                self.ActionResults.SetBackgroundColour(EXIT_COLOR)
-                self.ActionResults.SetValue("Scan barcode to check user out of event")
-            else:
-                dlg.Destroy()
-                dlg = wx.MessageDialog(self, 'The password you entered was invalid.', 'Bad password', style = wx.OK | wx.ICON_INFORMATION)
-                dlg.ShowModal()
+    	if EXIT_PASSWORD:
+            dlg = wx.TextEntryDialog(self, 'Enter password for access to scan-out','Password', style = wx.TE_PASSWORD | wx.OK | wx.CANCEL | wx.CENTRE)
+            dlg.SetValue("")
+            if dlg.ShowModal() == wx.ID_OK:
+                if dlg.GetValue() == EXIT_PASSWORD:
+                    self.CurrentMode = MODE_EXIT
+                    self.UpdateModeButtons()
+                    self.ActionResults.SetBackgroundColour(EXIT_COLOR)
+                    self.ActionResults.SetValue("Scan barcode to check user out of event")
+                else:
+                    dlg.Destroy()
+                    dlg = wx.MessageDialog(self, 'The password you entered was invalid.', 'Bad password', style = wx.OK | wx.ICON_INFORMATION)
+                    dlg.ShowModal()
 
-        dlg.Destroy()
+            dlg.Destroy()
+        else:
+            self.CurrentMode = MODE_EXIT
+            self.UpdateModeButtons()
+            self.ActionResults.SetBackgroundColour(EXIT_COLOR)
+            self.ActionResults.SetValue("Scan barcode to check user out of event")
 
     def UpdateModeButtons(self):
-        self.ActionBoxSizer.Show(self.InfoTree, False)
+        self.ActionBoxSizer.Show(self.InfoPanel, False)
         self.ActionBoxSizer.Layout()
 
         self.EnterEventButton.SetValue(self.CurrentMode == MODE_ENTER)
         self.InfoButton.SetValue(self.CurrentMode == MODE_INFO)
         self.ExitEventButton.SetValue(self.CurrentMode == MODE_EXIT)
         self.BarcodeEntry.SetValue('')
-
-    def RejectionPopup(self):
-        dlg = wx.MessageDialog(self, 'That barcode was not valid for entry.', 'Entry Denied', style = wx.OK | wx.ICON_INFORMATION)
-        dlg.ShowModal()
-        dlg.Destroy()
 
     def OnBarcodeChar(self, event):
         keycode = event.GetKeyCode()
@@ -159,7 +220,7 @@ class ticketmainwindow(wx.Frame):
             event.Skip()
 
     def ShowBarcode(self, barcode, mode = MODE_INFO):
-        self.cursor.execute('select barcode, tier_id, code, number, user_email, assigned_name, purchase_date, entry_at from ticket where barcode = ?', (barcode,))
+        self.cursor.execute('select barcode, tier_id, code, number, user_email, assigned_name, purchase_date, used_at, is_present from ticket where barcode = ?', (barcode,))
         valid_barcode = False
         for row in self.cursor:
             valid_barcode = True
@@ -171,8 +232,12 @@ class ticketmainwindow(wx.Frame):
             else:
                 self.ActionResults.SetBackgroundColour(BAD_TICKET_COLOR)
                 wx.Sound.PlaySound(REJECT_SOUND)
-                self.RejectionPopup()
             return
+
+        if row['is_present'] > 0:
+            present = "Yes"
+        else:
+            present = "No"
         
         message = '''
 Barcode: %s
@@ -185,24 +250,30 @@ Purchase date: %s
 ''' % (row['barcode'], row['tier_id'], row['code'], row['number'], row['user_email'], row['assigned_name'], row['purchase_date'])
 
         if mode == MODE_ENTER:
-            if row['entry_at']:
-                message = "Ticket already used.\n" + message + "Entered event at: " + row['entry_at']
+            if row['used_at'] and row['is_present'] > 0:
+                message = "Ticket already used.\n" + message + ("Originally used at: %s\n" % row['used_at'])
                 self.LogTicket(barcode, "reject", "Attempted entry; ticket already used")
                 self.ActionResults.SetBackgroundColour(BAD_TICKET_COLOR)
                 wx.Sound.PlaySound(REJECT_SOUND)
-                self.RejectionPopup()
             else:
                 message = "Ticket valid for entry.\n" + message
-                self.cursor.execute('update ticket set entry_at = datetime() where barcode = ?', (barcode,))
-                self.tickets_entered = self.tickets_entered + 1
-                self.tickets_entered_today = self.tickets_entered_today + 1
+                if row['used_at']:
+                    # reentry
+                    self.cursor.execute('update ticket set is_present = 1 where barcode = ?', (barcode,))
+                    present = "Yes"
+                else:
+                    self.cursor.execute('update ticket set used_at = datetime(), is_present = 1 where barcode = ?', (barcode,))
+                    self.tickets_used = self.tickets_used + 1
+                    self.tickets_used_today = self.tickets_used_today + 1
+                
                 self.LogTicket(barcode, "enter", "Ticket used for entry")
                 self.ActionResults.SetBackgroundColour(OK_TICKET_COLOR)
                 wx.Sound.PlaySound(ACCEPT_SOUND)
         if mode == MODE_EXIT:
-            if row['entry_at']:
-                message = message + "Entered event at: " + row['entry_at']
-                self.cursor.execute('update ticket set entry_at = null where barcode = ?', (barcode,))
+            if row['is_present'] > 0:
+                message = message + "Ticket originally used at: %s\n" % row['used_at']
+                self.cursor.execute('update ticket set is_present = 0 where barcode = ?', (barcode,))
+                present = "No"
                 self.LogTicket(barcode, "exit", "Exiting event")
                 self.ActionResults.SetBackgroundColour(OK_TICKET_COLOR)
                 self.__update_ticket_counts()
@@ -211,13 +282,15 @@ Purchase date: %s
                 self.LogTicket(barcode, "reject-exit", "Scanned for exit; ticket not registered as entered")
                 self.ActionResults.SetBackgroundColour(BAD_TICKET_COLOR)
         if mode == MODE_INFO:
-            if row['entry_at']:
-                message = message + "Entered event at: " + row['entry_at'] + "\n"
+            if row['used_at']:
+                message = message + "Ticket originally used at: %s\n" % row['used_at']
                 self.ActionResults.SetBackgroundColour(INFO_COLOR)
             else:
                 self.ActionResults.SetBackgroundColour(INFO_COLOR)
+        message += 'Present: %s' % (present,)
 
         message += '''
+
 History:
 '''
         self.cursor.execute('select barcode, greeter, message, message_at from ticketlog where barcode = ? order by message_at desc',
@@ -232,7 +305,7 @@ History:
         self.sqlconn.commit()
         
         f = open(XML_LOG_FILE, 'a')
-        f.write("<" + transtype + " greeter=" + quoteattr(self.CurrentGreeter) + " barcode=" + quoteattr(barcode) + " timestamp=" + quoteattr(datetime.now().strftime("%Y-%m-%d %H:%M:%S")) + ">\n  " + message + "\n<" + transtype + ">\n")
+        f.write("<" + transtype + " greeter=" + quoteattr(self.CurrentGreeter) + " barcode=" + quoteattr(barcode) + " timestamp=" + quoteattr(datetime.now().strftime("%Y-%m-%d %H:%M:%S")) + ">\n  " + message + "\n</" + transtype + ">\n")
         f.close()
 
     def __init__(self,parent,id,title,**kwds):
@@ -262,6 +335,7 @@ History:
         self.__do_layout()
         self.__open_database()
         self.SetModeEnter()
+        self.CurrentInfoMode = INFO_MODE_DATE
 
         # update our current time and counts every second:
         self.timer = wx.Timer(self)
@@ -298,8 +372,19 @@ History:
         self.ChangeGreeterButton.Bind(wx.EVT_BUTTON, self.ChangeGreeter)
         
         self.ActionBoxSizer = wx.BoxSizer(wx.HORIZONTAL)
-        self.ActionBoxSizer.Add(self.InfoTree, proportion=1, flag = wx.EXPAND)
-        self.ActionBoxSizer.Add(self.ActionResults, proportion=1, flag = wx.EXPAND)
+
+	self.InfoPanel = wx.BoxSizer(wx.VERTICAL)
+        infomodebuttons = wx.BoxSizer(wx.HORIZONTAL)
+        self.InfoModeTierButton = wx.ToggleButton(self, -1, "By Tier")
+        self.InfoModeDateButton = wx.ToggleButton(self, -1, "By Date")
+        infomodebuttons.Add(self.InfoModeTierButton, proportion = 1, flag = wx.EXPAND | wx.LEFT | wx.RIGHT, border = 5)
+        infomodebuttons.Add(self.InfoModeDateButton, proportion = 1, flag = wx.EXPAND | wx.LEFT | wx.RIGHT, border = 5)
+        self.InfoModeTierButton.Bind(wx.EVT_TOGGLEBUTTON, self.SetInfoModeTier)
+        self.InfoModeDateButton.Bind(wx.EVT_TOGGLEBUTTON, self.SetInfoModeDate)
+        self.InfoPanel.Add(infomodebuttons, proportion=0, flag = wx.EXPAND | wx.LEFT | wx.RIGHT)
+        self.InfoPanel.Add(self.InfoTree, proportion=1, flag = wx.EXPAND | wx.TOP | wx.LEFT | wx.RIGHT | wx.BOTTOM)
+        self.ActionBoxSizer.Add(self.InfoPanel, proportion=1, flag = wx.EXPAND | wx.LEFT | wx.RIGHT)
+        self.ActionBoxSizer.Add(self.ActionResults, proportion=1, flag = wx.EXPAND | wx.LEFT | wx.RIGHT)
 
         doc = wx.TextCtrl(self, -1, DOCTEXT, style = wx.TE_READONLY | wx.TE_MULTILINE)
         doc.SetFont(self.ReadableFont)
@@ -325,20 +410,21 @@ History:
         self.__update_ticket_counts()
 
     def __update_ticket_counts(self):
-        self.cursor.execute('select count(*), count(entry_at) from ticket')
+        self.cursor.execute('select count(*), count(used_at), sum(is_present) from ticket')
         self.tickets_total = 0
-        self.tickets_entered = 0
+        self.tickets_used = 0
+        self.tickets_present = 0
         for row in self.cursor:
-            (self.tickets_total, self.tickets_entered) = row
+            (self.tickets_total, self.tickets_used, self.tickets_present) = row
 
-        self.cursor.execute('select count(*) from ticket where entry_at > date()')
-        self.tickets_entered_today = 0
+        self.cursor.execute('select count(*) from ticket where used_at > date()')
+        self.tickets_used_today = 0
         for row in self.cursor:
-            (self.tickets_entered_today,) = row
+            (self.tickets_used_today,) = row
 
     def UpdateSummary(self, event=None):
         self.SummaryText.SetLabel('Tickets used today: %d  Tickets used total:  %d of %d  Current greeter: %s  Current time: %s' %
-                                  (self.tickets_entered_today, self.tickets_entered,
+                                  (self.tickets_used_today, self.tickets_used,
                                    self.tickets_total,
                                    self.CurrentGreeter,
                                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
