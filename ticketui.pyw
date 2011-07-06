@@ -31,6 +31,9 @@ BAD_TICKET_COLOR = (255, 96, 96)
 INFO_COLOR = (255, 255, 255)
 EXIT_COLOR = (255, 255, 128)
 
+BUTTON_ON_COLOR = (255, 255, 128)
+BUTTON_OFF_COLOR = (32, 32, 32)
+
 class ticketmainwindow(wx.Frame):
     def ChangeGreeter(self, event=None):
         dlg = wx.TextEntryDialog(self, 'What is your name, greeter?','Greeter Name')
@@ -51,8 +54,8 @@ class ticketmainwindow(wx.Frame):
         self.UpdateInfoTree()
 
     def UpdateInfoModeButtons(self):
-        self.InfoModeTierButton.SetValue(self.CurrentInfoMode == INFO_MODE_TIER)
-        self.InfoModeDateButton.SetValue(self.CurrentInfoMode == INFO_MODE_DATE)
+        self.MarkToggleButton(self.InfoModeTierButton,self.CurrentInfoMode == INFO_MODE_TIER, "By Tier")
+        self.MarkToggleButton(self.InfoModeDateButton,self.CurrentInfoMode == INFO_MODE_DATE, "By Date")
 
     def SetModeEnter(self, event=None):
         self.CurrentMode = MODE_ENTER
@@ -74,6 +77,15 @@ class ticketmainwindow(wx.Frame):
 
         self.UpdateInfoModeButtons()
         self.UpdateInfoTree()
+
+    def MarkToggleButton(self, button, newstate, label):
+        # now, update the background since toggle buttons are tough to see under windows
+        if newstate:
+            button.SetLabel("########   " + label + "   ########")
+        else:
+            button.SetLabel(label)
+
+        button.SetValue(newstate)
 
     def UpdateInfoTree(self):
         self.InfoTree.DeleteChildren(self.InfoTreeRoot)
@@ -185,9 +197,10 @@ class ticketmainwindow(wx.Frame):
         self.ActionBoxSizer.Show(self.InfoPanel, False)
         self.ActionBoxSizer.Layout()
 
-        self.EnterEventButton.SetValue(self.CurrentMode == MODE_ENTER)
-        self.InfoButton.SetValue(self.CurrentMode == MODE_INFO)
-        self.ExitEventButton.SetValue(self.CurrentMode == MODE_EXIT)
+        self.MarkToggleButton(self.EnterEventButton,self.CurrentMode == MODE_ENTER, "Scan for entry (e)")
+        self.MarkToggleButton(self.InfoButton,self.CurrentMode == MODE_INFO, "Information (i)")
+        self.MarkToggleButton(self.ExitEventButton,self.CurrentMode == MODE_EXIT, "Scan for exit (x)")
+        self.MarkToggleButton(self.ChangeGreeterButton, False, "Change greeter (g)")
         self.BarcodeEntry.SetValue('')
 
     def OnBarcodeChar(self, event):
@@ -316,8 +329,12 @@ History:
         wx.Frame.__init__(self,parent,id,title,**kwds)
 
         font = wx.SystemSettings_GetFont(wx.SYS_SYSTEM_FONT)
-        font.SetPointSize(20)
+        font.SetPointSize(10)
         self.ReadableFont = font
+        font = wx.SystemSettings_GetFont(wx.SYS_SYSTEM_FONT)
+        font.SetWeight(wx.FONTWEIGHT_BOLD)
+        font.SetPointSize(30)
+        self.BiggerFont = font
         
         self.BarcodeEntry = wx.TextCtrl(self, -1, style = wx.WANTS_CHARS)
         self.SummaryText = wx.StaticText(self, -1, "Greeter: ? Tickets used: ?/?")
@@ -354,7 +371,7 @@ History:
         self.EnterEventButton = wx.ToggleButton(self, -1, "Scan for entry (e)")
         self.InfoButton = wx.ToggleButton(self, -1, "Information (i)")
         self.ExitEventButton = wx.ToggleButton(self, -1, "Scan for exit (x)")
-        self.ChangeGreeterButton = wx.Button(self, -1, "Change greeter (g)")
+        self.ChangeGreeterButton = wx.ToggleButton(self, -1, "Change greeter (g)")
         self.EnterEventButton.SetFont(self.ReadableFont)
         self.InfoButton.SetFont(self.ReadableFont)
         self.ExitEventButton.SetFont(self.ReadableFont)
