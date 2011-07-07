@@ -19,7 +19,7 @@ EXIT_PASSWORD = None
 ACCEPT_SOUND = "burn_scan/accept.wav"
 REJECT_SOUND = "burn_scan/reject.wav"
 
-DOCTEXT="Use (b) to scan barcodes for entry. When you have a new greeter shift change, select Change Greeter (g) to specify the name of the new greeter.  Use the information panel (i) to scan to see if a barcode is valid without using it, or to see a breakdown of entrance counts."
+DOCTEXT="Press (b) to scan barcodes for entry. When you have a new greeter shift change, select Change Greeter (g) to specify the name of the new greeter.  Use the information panel (i) to scan to see if a barcode is valid without using it, or to see a breakdown of entrance counts."
 
 MODE_ENTER = 1
 MODE_INFO = 2
@@ -87,7 +87,7 @@ class ticketmainwindow(wx.Frame):
         else:
             button.SetLabel(label)
 
-        button.SetValue(newstate)
+        button.SetValue(not newstate)
 
     def UpdateInfoTree(self):
         self.InfoTree.DeleteChildren(self.InfoTreeRoot)
@@ -122,7 +122,7 @@ class ticketmainwindow(wx.Frame):
     
     def UpdateInfoTreeDate(self):
         cursor2 = self.sqlconn.cursor()
-        self.cursor.execute('select date(used_at) as day from ticket group by day order by day desc')
+        self.cursor.execute('select date(used_at) as day from ticket where used_at is not null group by day order by day desc')
         for date in self.cursor:
             cursor2.execute('select count(*) as total, sum(is_present) as present from ticket where date(used_at) = ?', (date['day'],))
             (day_used, day_total, day_present) = (0, 0, 0)
