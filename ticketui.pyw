@@ -150,8 +150,8 @@ class ticketmainwindow(wx.Frame):
                 message = '%s: %s (#%d)' % (row['barcode'], row['assigned_name'], row['number'])
                 if row['used_at']:
                     message += ' used at: ' + row['used_at']
-                if row['is_present'] == 0:
-                    message += ' (exited)'
+                    if row['is_present'] == 0:
+                        message += ' (exited)'
                 newitem = self.InfoTree.AppendItem(parent_item, message)
                 self.InfoTree.SetItemPyData(newitem, ("barcode", row['barcode']))
             event.Skip()
