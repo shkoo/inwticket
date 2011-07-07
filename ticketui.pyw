@@ -327,7 +327,8 @@ History:
         self.title = title
         self.CurrentGreeter = None
         self.updating_greeter = False
-	self.StartXmlUpdate()
+        self.StartXmlUpdate()
+        self.NeedUpdateCounts = False
         
         wx.Frame.__init__(self,parent,id,title,**kwds)
 
@@ -443,6 +444,10 @@ History:
             (self.tickets_used_today,) = row
 
     def UpdateSummary(self, event=None):
+        if self.NeedUpdateCounts:
+            self.NeedUpdateCounts = False
+            self.__update_ticket_counts()
+
         self.SummaryText.SetLabel('Tickets used today: %d  Tickets used total:  %d of %d  Current greeter: %s  Current time: %s' %
                                   (self.tickets_used_today, self.tickets_used,
                                    self.tickets_total,
@@ -458,8 +463,12 @@ History:
 	    if datetime.now() > self.NextUpdateTime:
 	       self.StartXmlUpdate()
 
+    def DoXmlUpdate(self):
+        importxml.importxml()
+        self.NeedUpdateCounts = True
+
     def StartXmlUpdate(self):
-        importthread = threading.Thread(target=importxml.importxml)
+        importthread = threading.Thread(target=self.DoXmlUpdate)
         importthread.start()
         self.NextUpdateTime = datetime.now() + XML_UPDATE_INTERVAL
 
