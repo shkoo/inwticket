@@ -3,7 +3,9 @@
 import sys
 import sqlite3
 import string
-from datetime import time, date, datetime
+import importxml
+import threading
+from datetime import time, date, datetime, timedelta
 import wx
 app = wx.App(redirect = 0)
 from xml.sax.saxutils import quoteattr
@@ -31,8 +33,8 @@ BAD_TICKET_COLOR = (255, 96, 96)
 INFO_COLOR = (255, 255, 255)
 EXIT_COLOR = (255, 255, 128)
 
-BUTTON_ON_COLOR = (255, 255, 128)
-BUTTON_OFF_COLOR = (32, 32, 32)
+# time betwen refetching the xml in order to refresh the ticket database
+XML_UPDATE_INTERVAL = timedelta(minutes=60)
 
 class ticketmainwindow(wx.Frame):
     def ChangeGreeter(self, event=None):
@@ -325,6 +327,7 @@ History:
         self.title = title
         self.CurrentGreeter = None
         self.updating_greeter = False
+	self.StartXmlUpdate()
         
         wx.Frame.__init__(self,parent,id,title,**kwds)
 
@@ -352,7 +355,7 @@ History:
         self.__do_layout()
         self.__open_database()
         self.SetModeEnter()
-        self.CurrentInfoMode = INFO_MODE_DATE
+        self.CurrentInfoMode = INFO_MODE_TIER
 
         # update our current time and counts every second:
         self.timer = wx.Timer(self)
@@ -452,6 +455,14 @@ History:
                 self.updating_greeter = False
             self.BarcodeEntry.SetFocus()
 
+	    if datetime.now() > self.NextUpdateTime:
+	       self.StartXmlUpdate()
+
+    def StartXmlUpdate(self):
+        importthread = threading.Thread(target=importxml.importxml)
+        importthread.start()
+        self.NextUpdateTime = datetime.now() + XML_UPDATE_INTERVAL
+
     def ValidGreeter(self):
         if self.CurrentGreeter is None: return False
         if len(self.CurrentGreeter) < 2: return False
@@ -460,6 +471,7 @@ History:
             return False
         return True
 
+importxml.setupdb()
 
 # style = wx.MAXIMIZE,  - only works under gtk+ and windows, not w/ carbon
 frame = ticketmainwindow(None, -1, 'ticketui.py')
