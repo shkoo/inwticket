@@ -19,7 +19,7 @@ EXIT_PASSWORD = None
 ACCEPT_SOUND = "burn_scan/accept.wav"
 REJECT_SOUND = "burn_scan/reject.wav"
 
-DOCTEXT="Press (b) to scan barcodes for entry. When you have a new greeter shift change, select Change Greeter (g) to specify the name of the new greeter.  Use the information panel (i) to scan to see if a barcode is valid without using it, or to see a breakdown of entrance counts."
+DOCTEXT="Press (b) to scan barcodes for entry. When you have a new greeter shift change, select Change Greeter (g) to specify the name of the new greeter.  Use the information panel (i) to scan to see if a barcode is valid without using it, or to see a breakdown of entrance counts.  Press (u) to update valid ticket list from network"
 
 MODE_ENTER = 1
 MODE_INFO = 2
@@ -219,6 +219,12 @@ class ticketmainwindow(wx.Frame):
         if keycode == ord('g'):
             self.ChangeGreeter()
             return
+        if keycode == ord('u'):
+            dlg = wx.ProgressDialog('Downloading Tickets', 'Downloading Tickets from ticket server', parent=self)
+	    self.DoXmlUpdate(True)
+            dlg.Destroy()
+            return
+
         if keycode == ord('b'):
             # barcode entry; sent by reader (along with the control key presumably) before the barcode
             self.BarcodeEntry.SetFocus()
@@ -463,9 +469,15 @@ History:
 	    if datetime.now() > self.NextUpdateTime:
 	       self.StartXmlUpdate()
 
-    def DoXmlUpdate(self):
-        importxml.importxml()
-        self.NeedUpdateCounts = True
+    def DoXmlUpdate(self, interactive=False):
+        try:
+            importxml.importxml()
+            self.NeedUpdateCounts = True
+        except Exception as e:
+            if interactive:
+                dlg = wx.MessageDialog(self, str(e), 'Error importing tickets', style = wx.OK|wx.ICON_INFORMATION)
+                dlg.ShowModal()
+                dlg.Destroy()
 
     def StartXmlUpdate(self):
         importthread = threading.Thread(target=self.DoXmlUpdate)
